@@ -10,11 +10,12 @@ import (
 )
 
 type params struct {
-	User            string    `env:"PROXY_USER" envDefault:""`
-	Password        string    `env:"PROXY_PASSWORD" envDefault:""`
-	Port            string    `env:"PROXY_PORT" envDefault:"1080"`
-	AllowedDestFqdn string    `env:"ALLOWED_DEST_FQDN" envDefault:""`
-	AllowedIPs      []string  `env:"ALLOWED_IPS" envSeparator:"," envDefault:""`
+	User            string   `env:"PROXY_USER" envDefault:""`
+	Password        string   `env:"PROXY_PASSWORD" envDefault:""`
+	BindIP          string   `env:"BIND_IP" envDefault:""`
+	Port            string   `env:"PROXY_PORT" envDefault:"1080"`
+	AllowedDestFqdn string   `env:"ALLOWED_DEST_FQDN" envDefault:""`
+	AllowedIPs      []string `env:"ALLOWED_IPS" envSeparator:"," envDefault:""`
 }
 
 func main() {
@@ -28,6 +29,7 @@ func main() {
 	//Initialize socks5 config
 	socks5conf := &socks5.Config{
 		Logger: log.New(os.Stdout, "", log.LstdFlags),
+		BindIP: net.IP(cfg.BindIP),
 	}
 
 	if cfg.User+cfg.Password != "" {
@@ -47,14 +49,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Set IP whitelist
-	if len(cfg.AllowedIPs) > 0 {
-		whitelist := make([]net.IP, len(cfg.AllowedIPs))
-		for i, ip := range cfg.AllowedIPs {
-			whitelist[i] = net.ParseIP(ip)
-		}
-		server.SetIPWhitelist(whitelist)
-	}
+	//// Set IP whitelist
+	//if len(cfg.AllowedIPs) > 0 {
+	//	whitelist := make([]net.IP, len(cfg.AllowedIPs))
+	//	for i, ip := range cfg.AllowedIPs {
+	//		whitelist[i] = net.ParseIP(ip)
+	//	}
+	//	server.SetIPWhitelist(whitelist)
+	//}
 
 	log.Printf("Start listening proxy service on port %s\n", cfg.Port)
 	if err := server.ListenAndServe("tcp", ":"+cfg.Port); err != nil {
