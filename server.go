@@ -25,6 +25,7 @@ func main() {
 	if err != nil {
 		log.Printf("%+v\n", err)
 	}
+	log.Printf("Config: %+v\n", cfg)
 
 	//Initialize socks5 config
 	socks5conf := &socks5.Config{
