@@ -30,7 +30,7 @@ func main() {
 	//Initialize socks5 config
 	socks5conf := &socks5.Config{
 		Logger: log.New(os.Stdout, "", log.LstdFlags),
-		BindIP: net.IP(cfg.BindIP),
+		BindIP: net.ParseIP(cfg.BindIP),
 	}
 
 	if cfg.User+cfg.Password != "" {
