@@ -59,9 +59,8 @@ func main() {
 	//	server.SetIPWhitelist(whitelist)
 	//}
 
-	bindAddress := net.JoinHostPort(cfg.BindIP, cfg.Port)
-	log.Printf("Start listening proxy service on %s\n", bindAddress)
-	if err := server.ListenAndServe("tcp", bindAddress); err != nil {
+	log.Printf("Start listening proxy service on port %s\n", cfg.Port)
+	if err := server.ListenAndServe("tcp", ":"+cfg.Port); err != nil {
 		log.Fatal(err)
 	}
 }
