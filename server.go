@@ -1,0 +1,144 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/armon/go-socks5"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/caarlos0/env/v6"
+)
+
+var (
+	requestTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "socks5_requests_total",
+			Help: "Total number of SOCKS5 requests",
+		},
+		[]string{"command", "status"},
+	)
+
+	requestDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "socks5_request_duration_seconds",
+			Help:    "Duration of SOCKS5 requests in seconds",
+			Buckets: prometheus.DefBuckets,
+		},
+		[]string{"command"},
+	)
+
+	endpointRequests = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "socks5_endpoint_requests_total",
+			Help: "Total number of requests to specific endpoints",
+		},
+		[]string{"host", "port", "path"},
+	)
+
+	endpointTraffic = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "socks5_endpoint_traffic_bytes",
+			Help: "Total traffic in bytes per endpoint",
+		},
+		[]string{"host", "port", "path", "direction"},
+	)
+)
+
+type params struct {
+	User            string    `env:"PROXY_USER" envDefault:""`
+	Password        string    `env:"PROXY_PASSWORD" envDefault:""`
+	Port            string    `env:"PROXY_PORT" envDefault:"1080"`
+	AllowedDestFqdn string    `env:"ALLOWED_DEST_FQDN" envDefault:""`
+	AllowedIPs      []string  `env:"ALLOWED_IPS" envSeparator:"," envDefault:""`
+	MetricsPort     string    `env:"METRICS_PORT" envDefault:"2112"`
+}
+
+type metricsRules struct {
+	original socks5.RuleSet
+}
+
+func getPathFromAddr(addr *socks5.AddrSpec) string {
+	if addr == nil {
+		return "unknown"
+	}
+	parts := strings.Split(addr.FQDN, "/")
+	if len(parts) > 1 {
+		return "/" + strings.Join(parts[1:], "/")
+	}
+	return "/"
+}
+
+func (r *metricsRules) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
+	start := time.Now()
+	newCtx, result := r.original.Allow(ctx, req)
+	duration := time.Since(start).Seconds()
+
+	commandType := "unknown"
+	switch req.Command {
+	case socks5.ConnectCommand:
+		commandType = "connect"
+	case socks5.BindCommand:
+		commandType = "bind"
+	case socks5.AssociateCommand:
+		commandType = "associate"
+	}
+
+	status := "success"
+	if !result {
+		status = "denied"
+	}
+
+	requestTotal.WithLabelValues(commandType, status).Inc()
+	requestDuration.WithLabelValues(commandType).Observe(duration)
+
+	if result && req.Command == socks5.ConnectCommand {
+		host := req.DestAddr.FQDN
+		if host == "" {
+			host = req.DestAddr.IP.String()
+		}
+		port := fmt.Sprintf("%d", req.DestAddr.Port)
+		path := getPathFromAddr(req.DestAddr)
+
+		endpointRequests.WithLabelValues(host, port, path).Inc()
+	}
+
+	return newCtx, result
+}
+
+func main() {
+	cfg := params{}
+	err := env.Parse(&cfg)
+	if err != nil {
+		log.Printf("%+v\n", err)
+	}
+
+	conf := &socks5.Config{
+		Rules: &metricsRules{
+			original: socks5.PermitAll(),
+		},
+	}
+
+	server, err := socks5.New(conf)
+	if err != nil {
+		log.Fatalf("Failed to create SOCKS5 server: %v", err)
+	}
+
+	go func() {
+		http.Handle("/metrics", promhttp.Handler())
+		log.Println("Starting metrics server on :" + cfg.MetricsPort)
+		if err := http.ListenAndServe(":"+cfg.MetricsPort, nil); err != nil {
+			log.Fatalf("Failed to start metrics server: %v", err)
+		}
+	}()
+
+	log.Println("Starting SOCKS5 server on :" + cfg.Port)
+	if err := server.ListenAndServe("tcp", ":"+cfg.Port); err != nil {
+		log.Fatalf("Failed to start SOCKS5 server: %v", err)
+	}
+}

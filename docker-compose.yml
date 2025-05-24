@@ -1,0 +1,9 @@
+services:
+    socks5:
+        restart: always
+        build:
+            context: .
+        env_file: .env
+        ports:
+            - "1080:1080"
+            - "2112:2112"
