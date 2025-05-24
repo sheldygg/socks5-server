@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/armon/go-socks5"
@@ -39,7 +38,7 @@ var (
 			Name: "socks5_endpoint_requests_total",
 			Help: "Total number of requests to specific endpoints",
 		},
-		[]string{"host", "port", "path"},
+		[]string{"host", "port"},
 	)
 )
 
@@ -55,17 +54,6 @@ type params struct {
 type metricsRules struct {
 	original   socks5.RuleSet
 	allowedIPs []string
-}
-
-func getPathFromAddr(addr *socks5.AddrSpec) string {
-	if addr == nil {
-		return "unknown"
-	}
-	parts := strings.Split(addr.FQDN, "/")
-	if len(parts) > 1 {
-		return "/" + strings.Join(parts[1:], "/")
-	}
-	return "/"
 }
 
 func (r *metricsRules) Allow(ctx context.Context, req *socks5.Request) (context.Context, bool) {
@@ -101,9 +89,8 @@ func (r *metricsRules) Allow(ctx context.Context, req *socks5.Request) (context.
 			host = req.DestAddr.IP.String()
 		}
 		port := fmt.Sprintf("%d", req.DestAddr.Port)
-		path := getPathFromAddr(req.DestAddr)
 
-		endpointRequests.WithLabelValues(host, port, path).Inc()
+		endpointRequests.WithLabelValues(host, port).Inc()
 	}
 
 	return newCtx, result
